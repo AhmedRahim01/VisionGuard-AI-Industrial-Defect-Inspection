@@ -9,6 +9,14 @@ from detector import (
 
 from product_classifier import validate_product
 
+from database import (
+    initialize_database,
+    save_inspection,
+    get_inspections,
+    get_inspection,
+    get_dashboard_statistics,
+)
+
 
 # ============================================================
 # VisionGuard API
@@ -17,8 +25,15 @@ from product_classifier import validate_product
 app = FastAPI(
     title="VisionGuard API",
     description="AI-powered industrial quality inspection API",
-    version="2.0.0",
+    version="3.0.0",
 )
+
+
+# ============================================================
+# Initialize Database
+# ============================================================
+
+initialize_database()
 
 
 # ============================================================
@@ -27,12 +42,10 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-
     allow_origins=[
         "http://localhost:5173",
         "http://127.0.0.1:5173",
     ],
-
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -84,6 +97,10 @@ def root():
         "supported_products": len(SUPPORTED_CATEGORIES),
 
         "product_verification": True,
+
+        "database": "SQLite",
+        "inspection_history": True,
+        "dashboard_analytics": True,
     }
 
 
@@ -97,6 +114,7 @@ def health():
         "product_classifier": "ready",
 
         "product_verification": "enabled",
+        "database": "ready",
     }
 
 
@@ -109,7 +127,6 @@ async def inspect_product(
     image: UploadFile = File(...),
     category: str = Form(...),
 ):
-
     try:
 
         # ----------------------------------------------------
@@ -222,7 +239,7 @@ async def inspect_product(
         )
 
         # ====================================================
-        # MERGE PRODUCT + DEFECT RESULTS
+        # STAGE 3 — MERGE PRODUCT + DEFECT RESULTS
         # ====================================================
 
         inspection_result.update(
@@ -265,6 +282,38 @@ async def inspect_product(
             }
         )
 
+        # ====================================================
+        # STAGE 4 — SAVE INSPECTION TO DATABASE
+        # ====================================================
+
+        database_record = save_inspection(
+            inspection_result
+        )
+
+        # ----------------------------------------------------
+        # Add database information to API response
+        # ----------------------------------------------------
+
+        inspection_result.update(
+            {
+                "inspection_id": (
+                    database_record["id"]
+                ),
+
+                "inspection_code": (
+                    database_record[
+                        "inspection_code"
+                    ]
+                ),
+
+                "created_at": (
+                    database_record[
+                        "created_at"
+                    ]
+                ),
+            }
+        )
+
         return inspection_result
 
     except HTTPException:
@@ -273,6 +322,125 @@ async def inspect_product(
     except Exception as error:
 
         print("Inspection error:", error)
+
+        raise HTTPException(
+            status_code=500,
+            detail=str(error),
+        )
+
+
+# ============================================================
+# Inspection History
+# ============================================================
+
+@app.get("/api/inspections")
+def inspection_history(
+    limit: int = 100,
+):
+    """
+    Return saved VisionGuard inspections.
+
+    Newest inspections are returned first.
+    """
+
+    try:
+
+        inspections = get_inspections(
+            limit=limit
+        )
+
+        return {
+            "success": True,
+            "count": len(inspections),
+            "inspections": inspections,
+        }
+
+    except Exception as error:
+
+        print(
+            "Inspection history error:",
+            error,
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail=str(error),
+        )
+
+
+# ============================================================
+# Single Inspection Details
+# ============================================================
+
+@app.get("/api/inspections/{inspection_id}")
+def inspection_details(
+    inspection_id: int,
+):
+    """
+    Return complete information for one saved inspection.
+    """
+
+    try:
+
+        inspection = get_inspection(
+            inspection_id
+        )
+
+        if inspection is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Inspection not found.",
+            )
+
+        return {
+            "success": True,
+            "inspection": inspection,
+        }
+
+    except HTTPException:
+        raise
+
+    except Exception as error:
+
+        print(
+            "Inspection details error:",
+            error,
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail=str(error),
+        )
+
+
+# ============================================================
+# Dashboard Statistics
+# ============================================================
+
+@app.get("/api/dashboard")
+def dashboard():
+    """
+    Return real VisionGuard quality-control statistics
+    calculated from saved inspections.
+    """
+
+    try:
+
+        statistics = (
+            get_dashboard_statistics()
+        )
+
+        return {
+            "success": True,
+            **statistics,
+        }
+
+    except Exception as error:
+
+        print(
+            "Dashboard statistics error:",
+            error,
+        )
 
         raise HTTPException(
             status_code=500,

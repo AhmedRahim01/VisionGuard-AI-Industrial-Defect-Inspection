@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+
 import {
   LayoutDashboard,
   ScanLine,
@@ -16,6 +17,7 @@ import {
   ArrowUpRight,
   ChevronRight,
   Cpu,
+  RefreshCw,
 } from "lucide-react";
 
 import {
@@ -32,59 +34,25 @@ import {
 } from "recharts";
 
 import NewInspection from "./pages/NewInspection";
+import InspectionHistory from "./pages/InspectionHistory";
+import Analytics from "./pages/Analytics";
+
 import "./App.css";
 
-const trendData = [
-  { day: "Mon", inspections: 118 },
-  { day: "Tue", inspections: 145 },
-  { day: "Wed", inspections: 132 },
-  { day: "Thu", inspections: 184 },
-  { day: "Fri", inspections: 168 },
-  { day: "Sat", inspections: 206 },
-  { day: "Sun", inspections: 192 },
-];
 
-const qualityData = [
-  { name: "Passed", value: 88.6 },
-  { name: "Rejected", value: 11.4 },
-];
+const API_BASE_URL = "http://127.0.0.1:8000";
 
-const recentInspections = [
-  {
-    id: "VG-1248",
-    product: "Metal Nut",
-    time: "10:42 PM",
-    affected: "0.00%",
-    confidence: "—",
-    status: "PASS",
-  },
-  {
-    id: "VG-1247",
-    product: "Capsule",
-    time: "10:38 PM",
-    affected: "8.31%",
-    confidence: "96.4%",
-    status: "REJECT",
-  },
-  {
-    id: "VG-1246",
-    product: "Tile",
-    time: "10:31 PM",
-    affected: "2.14%",
-    confidence: "91.7%",
-    status: "REJECT",
-  },
-  {
-    id: "VG-1245",
-    product: "Hazelnut",
-    time: "10:24 PM",
-    affected: "0.00%",
-    confidence: "—",
-    status: "PASS",
-  },
-];
 
-function SidebarItem({ icon: Icon, label, active, onClick }) {
+// ============================================================
+// SIDEBAR ITEM
+// ============================================================
+
+function SidebarItem({
+  icon: Icon,
+  label,
+  active,
+  onClick,
+}) {
   return (
     <button
       className={`sidebar-item ${active ? "active" : ""}`}
@@ -96,7 +64,18 @@ function SidebarItem({ icon: Icon, label, active, onClick }) {
   );
 }
 
-function StatCard({ title, value, change, icon: Icon, variant }) {
+
+// ============================================================
+// STAT CARD
+// ============================================================
+
+function StatCard({
+  title,
+  value,
+  change,
+  icon: Icon,
+  variant,
+}) {
   return (
     <div className="stat-card">
       <div className={`stat-icon ${variant}`}>
@@ -108,7 +87,9 @@ function StatCard({ title, value, change, icon: Icon, variant }) {
         <ArrowUpRight size={17} />
       </div>
 
-      <div className="stat-value">{value}</div>
+      <div className="stat-value">
+        {value}
+      </div>
 
       <div className="stat-change">
         <TrendingUp size={14} />
@@ -118,254 +99,693 @@ function StatCard({ title, value, change, icon: Icon, variant }) {
   );
 }
 
+
+// ============================================================
+// DASHBOARD
+// ============================================================
+
 function Dashboard({ setCurrentPage }) {
+  const [dashboardData, setDashboardData] =
+    useState(null);
+
+  const [
+    recentInspections,
+    setRecentInspections,
+  ] = useState([]);
+
+  const [
+    dashboardLoading,
+    setDashboardLoading,
+  ] = useState(true);
+
+  const [
+    dashboardError,
+    setDashboardError,
+  ] = useState("");
+
+
+  // ==========================================================
+  // LOAD REAL DATABASE DATA
+  // ==========================================================
+
+  const loadDashboard = async () => {
+    try {
+      setDashboardLoading(true);
+      setDashboardError("");
+
+      const [
+        dashboardResponse,
+        historyResponse,
+      ] = await Promise.all([
+        fetch(
+          `${API_BASE_URL}/api/dashboard`
+        ),
+
+        fetch(
+          `${API_BASE_URL}/api/inspections?limit=5`
+        ),
+      ]);
+
+      const dashboardJson =
+        await dashboardResponse.json();
+
+      const historyJson =
+        await historyResponse.json();
+
+      if (!dashboardResponse.ok) {
+        throw new Error(
+          dashboardJson.detail ||
+            "Failed to load dashboard."
+        );
+      }
+
+      if (!historyResponse.ok) {
+        throw new Error(
+          historyJson.detail ||
+            "Failed to load recent inspections."
+        );
+      }
+
+      setDashboardData(
+        dashboardJson
+      );
+
+      setRecentInspections(
+        historyJson.inspections || []
+      );
+    } catch (error) {
+      console.error(
+        "Dashboard error:",
+        error
+      );
+
+      setDashboardError(
+        error.message ||
+          "Could not connect to VisionGuard backend."
+      );
+    } finally {
+      setDashboardLoading(false);
+    }
+  };
+
+
+  // ==========================================================
+  // INITIAL LOAD
+  // ==========================================================
+
+  useEffect(() => {
+    loadDashboard();
+  }, []);
+
+
+  // ==========================================================
+  // LOADING
+  // ==========================================================
+
+  if (dashboardLoading) {
+    return (
+      <section className="page coming-page">
+        <Activity
+          size={38}
+          className="loading-spinner"
+        />
+
+        <h1>
+          Loading Dashboard
+        </h1>
+
+        <p>
+          Reading real VisionGuard inspection data...
+        </p>
+      </section>
+    );
+  }
+
+
+  // ==========================================================
+  // ERROR
+  // ==========================================================
+
+  if (dashboardError) {
+    return (
+      <section className="page coming-page">
+        <TriangleAlert size={38} />
+
+        <h1>
+          Dashboard Error
+        </h1>
+
+        <p>
+          {dashboardError}
+        </p>
+
+        <button
+          className="new-inspection-button"
+          onClick={loadDashboard}
+        >
+          <RefreshCw size={17} />
+          Try Again
+        </button>
+      </section>
+    );
+  }
+
+
+  // ==========================================================
+  // REAL STATISTICS
+  // ==========================================================
+
+  const total =
+    Number(
+      dashboardData?.total_inspections || 0
+    );
+
+  const passed =
+    Number(
+      dashboardData?.passed || 0
+    );
+
+  const rejected =
+    Number(
+      dashboardData?.rejected || 0
+    );
+
+  const passRate =
+    Number(
+      dashboardData?.pass_rate || 0
+    );
+
+  const rejectRate =
+    Number(
+      dashboardData?.reject_rate || 0
+    );
+
+  const severe =
+    Number(
+      dashboardData?.severe || 0
+    );
+
+  const minor =
+    Number(
+      dashboardData?.minor || 0
+    );
+
+
+  // ==========================================================
+  // REAL TREND DATA
+  // ==========================================================
+
+  const trendData =
+    dashboardData?.daily_statistics?.map(
+      (item) => ({
+        day: item.date,
+
+        inspections:
+          Number(item.inspections || 0),
+
+        passed:
+          Number(item.passed || 0),
+
+        rejected:
+          Number(item.rejected || 0),
+      })
+    ) || [];
+
+
+  // ==========================================================
+  // REAL QUALITY DISTRIBUTION
+  // ==========================================================
+
+  const qualityData = [
+    {
+      name: "Passed",
+      value: passed,
+    },
+    {
+      name: "Rejected",
+      value: rejected,
+    },
+  ];
+
+
+  // ==========================================================
+  // DASHBOARD UI
+  // ==========================================================
+
   return (
     <section className="page">
+
+      {/* ======================================================
+          HEADER
+      ====================================================== */}
+
       <div className="page-heading">
         <div>
-          <p className="eyebrow">QUALITY CONTROL CENTER</p>
-          <h1>Industrial Quality Overview</h1>
+          <p className="eyebrow">
+            QUALITY CONTROL CENTER
+          </p>
+
+          <h1>
+            Industrial Quality Overview
+          </h1>
+
           <p>
-            Real-time AI inspection performance and production quality
-            monitoring.
+            Real-time quality statistics generated from
+            VisionGuard inspection records.
           </p>
         </div>
 
-        <div className="live-status">
-          <span className="pulse-dot"></span>
-          Live monitoring
+        <div className="dashboard-heading-actions">
+          <button
+            className="dashboard-refresh-button"
+            onClick={loadDashboard}
+          >
+            <RefreshCw size={16} />
+            Refresh
+          </button>
+
+          <div className="live-status">
+            <span className="pulse-dot"></span>
+            Live database
+          </div>
         </div>
       </div>
+
+
+      {/* ======================================================
+          STATISTICS
+      ====================================================== */}
 
       <div className="stats-grid">
         <StatCard
           title="Total Inspections"
-          value="1,284"
-          change="+12.4% this week"
+          value={total.toLocaleString()}
+          change="Saved inspections"
           icon={Activity}
           variant="blue"
         />
 
         <StatCard
           title="Products Passed"
-          value="1,137"
-          change="+8.2% this week"
+          value={passed.toLocaleString()}
+          change={`${passRate.toFixed(
+            2
+          )}% pass rate`}
           icon={PackageCheck}
           variant="green"
         />
 
         <StatCard
           title="Products Rejected"
-          value="147"
-          change="11.4% reject rate"
+          value={rejected.toLocaleString()}
+          change={`${rejectRate.toFixed(
+            2
+          )}% reject rate`}
           icon={TriangleAlert}
           variant="red"
         />
 
         <StatCard
           title="Quality Pass Rate"
-          value="88.6%"
-          change="+2.1% improvement"
+          value={`${passRate.toFixed(2)}%`}
+          change={`${severe} severe • ${minor} minor`}
           icon={ShieldCheck}
           variant="purple"
         />
       </div>
 
+
+      {/* ======================================================
+          CHARTS
+      ====================================================== */}
+
       <div className="charts-grid">
+
+        {/* ACTIVITY CHART */}
+
         <div className="panel trend-panel">
           <div className="panel-header">
             <div>
-              <h3>Inspection Activity</h3>
-              <p>Inspection volume during the last 7 days</p>
+              <h3>
+                Inspection Activity
+              </h3>
+
+              <p>
+                Real inspection volume from the
+                VisionGuard database
+              </p>
             </div>
 
-            <select defaultValue="7">
-              <option value="7">Last 7 days</option>
-              <option value="30">Last 30 days</option>
-            </select>
+            <span className="real-data-badge">
+              REAL DATA
+            </span>
           </div>
 
           <div className="chart-container">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={trendData}>
-                <defs>
-                  <linearGradient
-                    id="inspectionGradient"
-                    x1="0"
-                    y1="0"
-                    x2="0"
-                    y2="1"
-                  >
-                    <stop
-                      offset="5%"
-                      stopColor="#2563eb"
-                      stopOpacity={0.25}
-                    />
-                    <stop
-                      offset="95%"
-                      stopColor="#2563eb"
-                      stopOpacity={0}
-                    />
-                  </linearGradient>
-                </defs>
+            {trendData.length > 0 ? (
+              <ResponsiveContainer
+                width="100%"
+                height="100%"
+              >
+                <AreaChart
+                  data={trendData}
+                >
+                  <defs>
+                    <linearGradient
+                      id="inspectionGradient"
+                      x1="0"
+                      y1="0"
+                      x2="0"
+                      y2="1"
+                    >
+                      <stop
+                        offset="5%"
+                        stopColor="#2563eb"
+                        stopOpacity={0.25}
+                      />
 
-                <CartesianGrid
-                  strokeDasharray="4 4"
-                  vertical={false}
-                  stroke="#e8edf5"
-                />
+                      <stop
+                        offset="95%"
+                        stopColor="#2563eb"
+                        stopOpacity={0}
+                      />
+                    </linearGradient>
+                  </defs>
 
-                <XAxis
-                  dataKey="day"
-                  axisLine={false}
-                  tickLine={false}
-                />
+                  <CartesianGrid
+                    strokeDasharray="4 4"
+                    vertical={false}
+                    stroke="#e8edf5"
+                  />
 
-                <YAxis
-                  axisLine={false}
-                  tickLine={false}
-                />
+                  <XAxis
+                    dataKey="day"
+                    axisLine={false}
+                    tickLine={false}
+                  />
 
-                <Tooltip />
+                  <YAxis
+                    allowDecimals={false}
+                    axisLine={false}
+                    tickLine={false}
+                  />
 
-                <Area
-                  type="monotone"
-                  dataKey="inspections"
-                  stroke="#2563eb"
-                  strokeWidth={3}
-                  fill="url(#inspectionGradient)"
-                />
-              </AreaChart>
-            </ResponsiveContainer>
+                  <Tooltip />
+
+                  <Area
+                    type="monotone"
+                    dataKey="inspections"
+                    stroke="#2563eb"
+                    strokeWidth={3}
+                    fill="url(#inspectionGradient)"
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="dashboard-empty-state">
+                <Activity size={28} />
+
+                <strong>
+                  No inspection activity yet
+                </strong>
+
+                <span>
+                  Run an inspection to populate this chart.
+                </span>
+              </div>
+            )}
           </div>
         </div>
+
+
+        {/* QUALITY DONUT */}
 
         <div className="panel quality-panel">
           <div className="panel-header">
             <div>
-              <h3>Quality Distribution</h3>
-              <p>Current inspection results</p>
+              <h3>
+                Quality Distribution
+              </h3>
+
+              <p>
+                PASS vs REJECT inspection results
+              </p>
             </div>
           </div>
 
           <div className="donut-wrapper">
-            <ResponsiveContainer width="100%" height={210}>
-              <PieChart>
-                <Pie
-                  data={qualityData}
-                  dataKey="value"
-                  innerRadius={68}
-                  outerRadius={90}
-                  paddingAngle={4}
-                  startAngle={90}
-                  endAngle={-270}
+            {total > 0 ? (
+              <>
+                <ResponsiveContainer
+                  width="100%"
+                  height={210}
                 >
-                  <Cell fill="#16a34a" />
-                  <Cell fill="#ef4444" />
-                </Pie>
-              </PieChart>
-            </ResponsiveContainer>
+                  <PieChart>
+                    <Pie
+                      data={qualityData}
+                      dataKey="value"
+                      innerRadius={68}
+                      outerRadius={90}
+                      paddingAngle={4}
+                      startAngle={90}
+                      endAngle={-270}
+                    >
+                      <Cell fill="#16a34a" />
+                      <Cell fill="#ef4444" />
+                    </Pie>
+                  </PieChart>
+                </ResponsiveContainer>
 
-            <div className="donut-center">
-              <strong>88.6%</strong>
-              <span>Pass Rate</span>
-            </div>
+                <div className="donut-center">
+                  <strong>
+                    {passRate.toFixed(1)}%
+                  </strong>
+
+                  <span>
+                    Pass Rate
+                  </span>
+                </div>
+              </>
+            ) : (
+              <div className="dashboard-empty-state">
+                <ShieldCheck size={28} />
+
+                <strong>
+                  No quality results
+                </strong>
+
+                <span>
+                  Inspection results will appear here.
+                </span>
+              </div>
+            )}
           </div>
 
           <div className="quality-legend">
             <div>
               <span className="legend-dot passed"></span>
+
               <div>
-                <small>Passed</small>
-                <strong>1,137</strong>
+                <small>
+                  Passed
+                </small>
+
+                <strong>
+                  {passed}
+                </strong>
               </div>
             </div>
 
             <div>
               <span className="legend-dot rejected"></span>
+
               <div>
-                <small>Rejected</small>
-                <strong>147</strong>
+                <small>
+                  Rejected
+                </small>
+
+                <strong>
+                  {rejected}
+                </strong>
               </div>
             </div>
           </div>
         </div>
       </div>
 
+
+      {/* ======================================================
+          RECENT + MODEL
+      ====================================================== */}
+
       <div className="bottom-grid">
+
+        {/* RECENT INSPECTIONS */}
+
         <div className="panel recent-panel">
           <div className="panel-header">
             <div>
-              <h3>Recent Inspections</h3>
-              <p>Latest AI-powered quality inspections</p>
+              <h3>
+                Recent Inspections
+              </h3>
+
+              <p>
+                Latest saved VisionGuard inspections
+              </p>
             </div>
 
-            <button className="text-button">
+            <button
+              className="text-button"
+              onClick={() =>
+                setCurrentPage("history")
+              }
+            >
               View all
               <ChevronRight size={16} />
             </button>
           </div>
 
-          <div className="inspection-table">
-            <div className="table-row table-head">
-              <span>Inspection</span>
-              <span>Product</span>
-              <span>Affected Area</span>
-              <span>Confidence</span>
-              <span>Status</span>
+          {recentInspections.length === 0 ? (
+            <div className="dashboard-empty-state recent-empty">
+              <ScanLine size={28} />
+
+              <strong>
+                No inspections saved yet
+              </strong>
+
+              <button
+                className="text-button"
+                onClick={() =>
+                  setCurrentPage("inspection")
+                }
+              >
+                Run first inspection
+                <ChevronRight size={15} />
+              </button>
             </div>
+          ) : (
+            <div className="inspection-table">
 
-            {recentInspections.map((inspection) => (
-              <div className="table-row" key={inspection.id}>
-                <span>
-                  <strong>{inspection.id}</strong>
-                  <small>{inspection.time}</small>
-                </span>
-
-                <span>{inspection.product}</span>
-                <span>{inspection.affected}</span>
-                <span>{inspection.confidence}</span>
-
-                <span>
-                  <span
-                    className={`status-badge ${
-                      inspection.status === "PASS"
-                        ? "pass"
-                        : "reject"
-                    }`}
-                  >
-                    {inspection.status}
-                  </span>
-                </span>
+              <div className="table-row table-head">
+                <span>Inspection</span>
+                <span>Product</span>
+                <span>Affected Area</span>
+                <span>Confidence</span>
+                <span>Status</span>
               </div>
-            ))}
-          </div>
+
+              {recentInspections.map(
+                (inspection) => (
+                  <div
+                    className="table-row"
+                    key={inspection.id}
+                  >
+                    <span>
+                      <strong>
+                        {
+                          inspection.inspection_code
+                        }
+                      </strong>
+
+                      <small>
+                        {
+                          inspection.created_at
+                        }
+                      </small>
+                    </span>
+
+                    <span>
+                      {
+                        inspection.product_category
+                      }
+                    </span>
+
+                    <span>
+                      {Number(
+                        inspection.affected_area || 0
+                      ).toFixed(2)}
+                      %
+                    </span>
+
+                    <span>
+                      {inspection.defect_detected
+                        ? `${Number(
+                            inspection.max_confidence ||
+                              0
+                          ).toFixed(2)}%`
+                        : "—"}
+                    </span>
+
+                    <span>
+                      <span
+                        className={`status-badge ${
+                          inspection.decision ===
+                          "PASS"
+                            ? "pass"
+                            : "reject"
+                        }`}
+                      >
+                        {
+                          inspection.decision
+                        }
+                      </span>
+                    </span>
+                  </div>
+                )
+              )}
+            </div>
+          )}
         </div>
+
+
+        {/* MODEL INFORMATION */}
 
         <div className="panel model-panel">
           <div className="model-icon">
             <Cpu size={28} />
           </div>
 
-          <span className="model-label">ACTIVE AI MODEL</span>
+          <span className="model-label">
+            ACTIVE AI MODEL
+          </span>
 
-          <h3>VisionGuard V4</h3>
-          <p>YOLOv8s Segmentation</p>
+          <h3>
+            VisionGuard V4
+          </h3>
+
+          <p>
+            YOLOv8s Segmentation
+          </p>
 
           <div className="model-metrics">
             <div>
-              <span>Accuracy</span>
-              <strong>95.50%</strong>
+              <span>
+                Validation Accuracy
+              </span>
+
+              <strong>
+                95.50%
+              </strong>
             </div>
 
             <div>
-              <span>Recall</span>
-              <strong>96.30%</strong>
+              <span>
+                Validation Recall
+              </span>
+
+              <strong>
+                95.24%
+              </strong>
             </div>
 
             <div>
-              <span>F1 Score</span>
-              <strong>95.54%</strong>
+              <span>
+                Validation F1
+              </span>
+
+              <strong>
+                95.49%
+              </strong>
             </div>
           </div>
 
@@ -379,72 +799,130 @@ function Dashboard({ setCurrentPage }) {
   );
 }
 
+
+// ============================================================
+// MAIN APP
+// ============================================================
+
 function App() {
-  const [currentPage, setCurrentPage] = useState("dashboard");
+  const [
+    currentPage,
+    setCurrentPage,
+  ] = useState("dashboard");
 
   return (
     <div className="app-shell">
+
+      {/* ======================================================
+          SIDEBAR
+      ====================================================== */}
+
       <aside className="sidebar">
+
+        {/* BRAND */}
+
         <div className="brand">
           <div className="brand-icon">
             <ScanLine size={25} />
           </div>
 
           <div>
-            <h2>VisionGuard</h2>
-            <span>Industrial AI</span>
+            <h2>
+              VisionGuard
+            </h2>
+
+            <span>
+              Industrial AI
+            </span>
           </div>
         </div>
 
-        <div className="nav-label">WORKSPACE</div>
+
+        {/* WORKSPACE */}
+
+        <div className="nav-label">
+          WORKSPACE
+        </div>
 
         <nav className="sidebar-nav">
           <SidebarItem
             icon={LayoutDashboard}
             label="Dashboard"
-            active={currentPage === "dashboard"}
-            onClick={() => setCurrentPage("dashboard")}
+            active={
+              currentPage === "dashboard"
+            }
+            onClick={() =>
+              setCurrentPage("dashboard")
+            }
           />
 
           <SidebarItem
             icon={ScanLine}
             label="New Inspection"
-            active={currentPage === "inspection"}
-            onClick={() => setCurrentPage("inspection")}
+            active={
+              currentPage === "inspection"
+            }
+            onClick={() =>
+              setCurrentPage("inspection")
+            }
           />
 
           <SidebarItem
             icon={History}
             label="Inspection History"
-            active={currentPage === "history"}
-            onClick={() => setCurrentPage("history")}
+            active={
+              currentPage === "history"
+            }
+            onClick={() =>
+              setCurrentPage("history")
+            }
           />
 
           <SidebarItem
             icon={BarChart3}
             label="Analytics"
-            active={currentPage === "analytics"}
-            onClick={() => setCurrentPage("analytics")}
+            active={
+              currentPage === "analytics"
+            }
+            onClick={() =>
+              setCurrentPage("analytics")
+            }
           />
 
           <SidebarItem
             icon={FileText}
             label="Reports"
-            active={currentPage === "reports"}
-            onClick={() => setCurrentPage("reports")}
+            active={
+              currentPage === "reports"
+            }
+            onClick={() =>
+              setCurrentPage("reports")
+            }
           />
         </nav>
 
-        <div className="nav-label secondary">SYSTEM</div>
+
+        {/* SYSTEM */}
+
+        <div className="nav-label secondary">
+          SYSTEM
+        </div>
 
         <nav className="sidebar-nav">
           <SidebarItem
             icon={Settings}
             label="Settings"
-            active={currentPage === "settings"}
-            onClick={() => setCurrentPage("settings")}
+            active={
+              currentPage === "settings"
+            }
+            onClick={() =>
+              setCurrentPage("settings")
+            }
           />
         </nav>
+
+
+        {/* SYSTEM STATUS */}
 
         <div className="system-card">
           <div className="system-card-title">
@@ -452,46 +930,85 @@ function App() {
             AI System Online
           </div>
 
-          <p>YOLOv8s-seg V4</p>
+          <p>
+            YOLOv8s-seg V4
+          </p>
 
           <div className="system-detail">
-            <span>Threshold</span>
-            <strong>0.090</strong>
+            <span>
+              Threshold
+            </span>
+
+            <strong>
+              0.090
+            </strong>
           </div>
 
           <div className="system-detail">
-            <span>Model F1</span>
-            <strong>95.54%</strong>
+            <span>
+              Validation F1
+            </span>
+
+            <strong>
+              95.49%
+            </strong>
           </div>
         </div>
 
+
+        {/* USER */}
+
         <div className="sidebar-footer">
-          <div className="avatar">VG</div>
+          <div className="avatar">
+            VG
+          </div>
 
           <div>
-            <strong>VisionGuard Admin</strong>
-            <span>Quality Control</span>
+            <strong>
+              VisionGuard Admin
+            </strong>
+
+            <span>
+              Quality Control
+            </span>
           </div>
         </div>
       </aside>
 
+
+      {/* ======================================================
+          MAIN CONTENT
+      ====================================================== */}
+
       <main className="main-content">
+
+        {/* TOPBAR */}
+
         <header className="topbar">
           <div className="search-box">
             <Search size={18} />
-            <input placeholder="Search inspections..." />
-            <span>⌘ K</span>
+
+            <input
+              placeholder="Search inspections..."
+            />
+
+            <span>
+              ⌘ K
+            </span>
           </div>
 
           <div className="topbar-actions">
             <button className="icon-button">
               <Bell size={19} />
+
               <span className="notification-dot"></span>
             </button>
 
             <button
               className="new-inspection-button"
-              onClick={() => setCurrentPage("inspection")}
+              onClick={() =>
+                setCurrentPage("inspection")
+              }
             >
               <ScanLine size={18} />
               New Inspection
@@ -499,41 +1016,82 @@ function App() {
           </div>
         </header>
 
+
+        {/* ====================================================
+            DASHBOARD
+        ==================================================== */}
+
         {currentPage === "dashboard" && (
-          <Dashboard setCurrentPage={setCurrentPage} />
+          <Dashboard
+            setCurrentPage={
+              setCurrentPage
+            }
+          />
         )}
 
-        {currentPage === "inspection" && <NewInspection />}
+
+        {/* ====================================================
+            NEW INSPECTION
+        ==================================================== */}
+
+        {currentPage === "inspection" && (
+          <NewInspection />
+        )}
+
+
+        {/* ====================================================
+            INSPECTION HISTORY
+        ==================================================== */}
 
         {currentPage === "history" && (
-          <section className="page coming-page">
-            <History size={38} />
-            <h1>Inspection History</h1>
-            <p>This module will display all saved inspections.</p>
-          </section>
+          <InspectionHistory />
         )}
 
+
+        {/* ====================================================
+            ANALYTICS
+        ==================================================== */}
+
         {currentPage === "analytics" && (
-          <section className="page coming-page">
-            <BarChart3 size={38} />
-            <h1>Analytics</h1>
-            <p>Advanced production quality analytics will appear here.</p>
-          </section>
+          <Analytics />
         )}
+
+
+        {/* ====================================================
+            REPORTS
+        ==================================================== */}
 
         {currentPage === "reports" && (
           <section className="page coming-page">
             <FileText size={38} />
-            <h1>Reports</h1>
-            <p>Generated inspection reports will appear here.</p>
+
+            <h1>
+              Reports
+            </h1>
+
+            <p>
+              Generated inspection reports will
+              appear here.
+            </p>
           </section>
         )}
+
+
+        {/* ====================================================
+            SETTINGS
+        ==================================================== */}
 
         {currentPage === "settings" && (
           <section className="page coming-page">
             <Settings size={38} />
-            <h1>Settings</h1>
-            <p>VisionGuard system configuration.</p>
+
+            <h1>
+              Settings
+            </h1>
+
+            <p>
+              VisionGuard system configuration.
+            </p>
           </section>
         )}
       </main>
