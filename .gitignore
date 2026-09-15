@@ -57,3 +57,5 @@ temp/
 tmp/
 # VisionGuard local database
 backend/data/
+
+backend/test_report.pdf
