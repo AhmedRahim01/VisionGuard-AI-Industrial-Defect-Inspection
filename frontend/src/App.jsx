@@ -6,7 +6,6 @@ import {
   History,
   BarChart3,
   FileText,
-  Settings,
   Bell,
   Search,
   TrendingUp,
@@ -36,6 +35,7 @@ import {
 import NewInspection from "./pages/NewInspection";
 import InspectionHistory from "./pages/InspectionHistory";
 import Analytics from "./pages/Analytics";
+import Reports from "./pages/Reports";
 
 import "./App.css";
 
@@ -335,10 +335,6 @@ function Dashboard({ setCurrentPage }) {
   return (
     <section className="page">
 
-      {/* ======================================================
-          HEADER
-      ====================================================== */}
-
       <div className="page-heading">
         <div>
           <p className="eyebrow">
@@ -371,10 +367,6 @@ function Dashboard({ setCurrentPage }) {
         </div>
       </div>
 
-
-      {/* ======================================================
-          STATISTICS
-      ====================================================== */}
 
       <div className="stats-grid">
         <StatCard
@@ -415,13 +407,7 @@ function Dashboard({ setCurrentPage }) {
       </div>
 
 
-      {/* ======================================================
-          CHARTS
-      ====================================================== */}
-
       <div className="charts-grid">
-
-        {/* ACTIVITY CHART */}
 
         <div className="panel trend-panel">
           <div className="panel-header">
@@ -518,8 +504,6 @@ function Dashboard({ setCurrentPage }) {
         </div>
 
 
-        {/* QUALITY DONUT */}
-
         <div className="panel quality-panel">
           <div className="panel-header">
             <div>
@@ -614,13 +598,7 @@ function Dashboard({ setCurrentPage }) {
       </div>
 
 
-      {/* ======================================================
-          RECENT + MODEL
-      ====================================================== */}
-
       <div className="bottom-grid">
-
-        {/* RECENT INSPECTIONS */}
 
         <div className="panel recent-panel">
           <div className="panel-header">
@@ -738,8 +716,6 @@ function Dashboard({ setCurrentPage }) {
         </div>
 
 
-        {/* MODEL INFORMATION */}
-
         <div className="panel model-panel">
           <div className="model-icon">
             <Cpu size={28} />
@@ -813,13 +789,7 @@ function App() {
   return (
     <div className="app-shell">
 
-      {/* ======================================================
-          SIDEBAR
-      ====================================================== */}
-
       <aside className="sidebar">
-
-        {/* BRAND */}
 
         <div className="brand">
           <div className="brand-icon">
@@ -837,8 +807,6 @@ function App() {
           </div>
         </div>
 
-
-        {/* WORKSPACE */}
 
         <div className="nav-label">
           WORKSPACE
@@ -902,28 +870,6 @@ function App() {
         </nav>
 
 
-        {/* SYSTEM */}
-
-        <div className="nav-label secondary">
-          SYSTEM
-        </div>
-
-        <nav className="sidebar-nav">
-          <SidebarItem
-            icon={Settings}
-            label="Settings"
-            active={
-              currentPage === "settings"
-            }
-            onClick={() =>
-              setCurrentPage("settings")
-            }
-          />
-        </nav>
-
-
-        {/* SYSTEM STATUS */}
-
         <div className="system-card">
           <div className="system-card-title">
             <span className="status-dot"></span>
@@ -956,8 +902,6 @@ function App() {
         </div>
 
 
-        {/* USER */}
-
         <div className="sidebar-footer">
           <div className="avatar">
             VG
@@ -976,13 +920,7 @@ function App() {
       </aside>
 
 
-      {/* ======================================================
-          MAIN CONTENT
-      ====================================================== */}
-
       <main className="main-content">
-
-        {/* TOPBAR */}
 
         <header className="topbar">
           <div className="search-box">
@@ -1017,10 +955,6 @@ function App() {
         </header>
 
 
-        {/* ====================================================
-            DASHBOARD
-        ==================================================== */}
-
         {currentPage === "dashboard" && (
           <Dashboard
             setCurrentPage={
@@ -1030,70 +964,25 @@ function App() {
         )}
 
 
-        {/* ====================================================
-            NEW INSPECTION
-        ==================================================== */}
-
         {currentPage === "inspection" && (
           <NewInspection />
         )}
 
-
-        {/* ====================================================
-            INSPECTION HISTORY
-        ==================================================== */}
 
         {currentPage === "history" && (
           <InspectionHistory />
         )}
 
 
-        {/* ====================================================
-            ANALYTICS
-        ==================================================== */}
-
         {currentPage === "analytics" && (
           <Analytics />
         )}
 
 
-        {/* ====================================================
-            REPORTS
-        ==================================================== */}
-
         {currentPage === "reports" && (
-          <section className="page coming-page">
-            <FileText size={38} />
-
-            <h1>
-              Reports
-            </h1>
-
-            <p>
-              Generated inspection reports will
-              appear here.
-            </p>
-          </section>
+          <Reports />
         )}
 
-
-        {/* ====================================================
-            SETTINGS
-        ==================================================== */}
-
-        {currentPage === "settings" && (
-          <section className="page coming-page">
-            <Settings size={38} />
-
-            <h1>
-              Settings
-            </h1>
-
-            <p>
-              VisionGuard system configuration.
-            </p>
-          </section>
-        )}
       </main>
     </div>
   );

@@ -1,5 +1,7 @@
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
+from pydantic import BaseModel, EmailStr
 
 from detector import (
     inspect_image,
@@ -17,6 +19,12 @@ from database import (
     get_dashboard_statistics,
 )
 
+from report_generator import generate_inspection_report
+from email_service import (
+    send_inspection_report,
+    is_email_configured,
+)
+
 
 # ============================================================
 # VisionGuard API
@@ -25,7 +33,7 @@ from database import (
 app = FastAPI(
     title="VisionGuard API",
     description="AI-powered industrial quality inspection API",
-    version="3.0.0",
+    version="3.2.0",
 )
 
 
@@ -76,6 +84,14 @@ SUPPORTED_CATEGORIES = [
 
 
 # ============================================================
+# Request Models
+# ============================================================
+
+class EmailReportRequest(BaseModel):
+    recipient_email: EmailStr
+
+
+# ============================================================
 # Health Check
 # ============================================================
 
@@ -101,6 +117,8 @@ def root():
         "database": "SQLite",
         "inspection_history": True,
         "dashboard_analytics": True,
+        "pdf_reports": True,
+        "email_reports": True,
     }
 
 
@@ -115,6 +133,13 @@ def health():
 
         "product_verification": "enabled",
         "database": "ready",
+        "pdf_reports": "ready",
+
+        "email_service": (
+            "configured"
+            if is_email_configured()
+            else "not_configured"
+        ),
     }
 
 
@@ -168,7 +193,7 @@ async def inspect_product(
             )
 
         # ====================================================
-        # STAGE 1 — PRODUCT VERIFICATION
+        # STAGE 1 - PRODUCT VERIFICATION
         # ====================================================
 
         product_validation = validate_product(
@@ -230,7 +255,7 @@ async def inspect_product(
             }
 
         # ====================================================
-        # STAGE 2 — DEFECT INSPECTION
+        # STAGE 2 - DEFECT INSPECTION
         # ====================================================
 
         inspection_result = inspect_image(
@@ -239,7 +264,7 @@ async def inspect_product(
         )
 
         # ====================================================
-        # STAGE 3 — MERGE PRODUCT + DEFECT RESULTS
+        # STAGE 3 - MERGE PRODUCT + DEFECT RESULTS
         # ====================================================
 
         inspection_result.update(
@@ -283,16 +308,12 @@ async def inspect_product(
         )
 
         # ====================================================
-        # STAGE 4 — SAVE INSPECTION TO DATABASE
+        # STAGE 4 - SAVE INSPECTION TO DATABASE
         # ====================================================
 
         database_record = save_inspection(
             inspection_result
         )
-
-        # ----------------------------------------------------
-        # Add database information to API response
-        # ----------------------------------------------------
 
         inspection_result.update(
             {
@@ -321,7 +342,10 @@ async def inspect_product(
 
     except Exception as error:
 
-        print("Inspection error:", error)
+        print(
+            "Inspection error:",
+            error,
+        )
 
         raise HTTPException(
             status_code=500,
@@ -365,6 +389,173 @@ def inspection_history(
         raise HTTPException(
             status_code=500,
             detail=str(error),
+        )
+
+
+# ============================================================
+# PDF Inspection Report
+# ============================================================
+
+@app.get("/api/inspections/{inspection_id}/report")
+def download_inspection_report(
+    inspection_id: int,
+):
+    """
+    Generate and download a PDF report for one inspection.
+    """
+
+    try:
+
+        inspection = get_inspection(
+            inspection_id
+        )
+
+        if inspection is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Inspection not found.",
+            )
+
+        pdf_buffer = generate_inspection_report(
+            inspection
+        )
+
+        inspection_code = (
+            inspection.get("inspection_code")
+            or f"VG-{inspection_id:06d}"
+        )
+
+        filename = (
+            f"VisionGuard_{inspection_code}_Report.pdf"
+        )
+
+        headers = {
+            "Content-Disposition": (
+                f'attachment; filename="{filename}"'
+            )
+        }
+
+        return StreamingResponse(
+            pdf_buffer,
+            media_type="application/pdf",
+            headers=headers,
+        )
+
+    except HTTPException:
+        raise
+
+    except Exception as error:
+
+        print(
+            "PDF report generation error:",
+            error,
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "Failed to generate inspection report."
+            ),
+        )
+
+
+# ============================================================
+# Email Inspection Report
+# ============================================================
+
+@app.post("/api/inspections/{inspection_id}/email")
+def email_inspection_report(
+    inspection_id: int,
+    request: EmailReportRequest,
+):
+    """
+    Generate the inspection PDF and send it by email.
+    """
+
+    try:
+
+        # ----------------------------------------------------
+        # Check SMTP configuration
+        # ----------------------------------------------------
+
+        if not is_email_configured():
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    "VisionGuard email service "
+                    "is not configured."
+                ),
+            )
+
+        # ----------------------------------------------------
+        # Get inspection
+        # ----------------------------------------------------
+
+        inspection = get_inspection(
+            inspection_id
+        )
+
+        if inspection is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Inspection not found.",
+            )
+
+        # ----------------------------------------------------
+        # Generate fresh PDF
+        # ----------------------------------------------------
+
+        pdf_buffer = generate_inspection_report(
+            inspection
+        )
+
+        # ----------------------------------------------------
+        # Send email
+        # ----------------------------------------------------
+
+        email_result = send_inspection_report(
+            recipient_email=(
+                str(request.recipient_email)
+            ),
+            inspection=inspection,
+            pdf_buffer=pdf_buffer,
+        )
+
+        return {
+            "success": True,
+            "message": (
+                "Inspection report sent successfully."
+            ),
+            "inspection_id": inspection_id,
+            "inspection_code": (
+                inspection.get(
+                    "inspection_code"
+                )
+            ),
+            "recipient": (
+                email_result["recipient"]
+            ),
+            "filename": (
+                email_result["filename"]
+            ),
+        }
+
+    except HTTPException:
+        raise
+
+    except Exception as error:
+
+        print(
+            "Email report error:",
+            error,
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "Failed to send inspection report. "
+                f"{str(error)}"
+            ),
         )
 
 
