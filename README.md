@@ -4,7 +4,7 @@
 
 VisionGuard is an end-to-end Computer Vision system designed to automate industrial product quality inspection.
 
-The system combines **product classification, defect segmentation, product-specific inspection regions, defect severity analysis, and automated quality decisions** in a web-based inspection platform.
+The system combines **product classification, defect segmentation, product-specific inspection regions, defect severity analysis, automated quality decisions, inspection history, analytics, PDF reporting, and email report delivery** in a web-based inspection platform.
 
 Instead of only predicting whether a product is defective, VisionGuard attempts to answer:
 
@@ -15,6 +15,7 @@ Instead of only predicting whether a product is defective, VisionGuard attempts 
 - How much of the inspection area is affected?
 - How severe is the defect?
 - Should the product PASS or be REJECTED?
+- Can the inspection result be stored, reviewed, exported, and shared?
 
 ---
 
@@ -42,7 +43,7 @@ Product Image
 └──────────────┬───────────────┘
                │
                ▼
-        Defect Mask
+        Defect Masks
                │
                ▼
 ┌──────────────────────────────┐
@@ -60,7 +61,84 @@ Product Image
                │
                ▼
          PASS / REJECT
+               │
+               ▼
+        Save Inspection
+               │
+               ▼
+     Dashboard / History
+               │
+               ▼
+       PDF / Email Report
 ```
+
+---
+
+## 🖥️ VisionGuard Interface
+
+### 📊 Industrial Quality Dashboard
+
+The dashboard provides an overview of saved inspection results, pass/reject statistics, inspection activity, and quality distribution.
+
+![VisionGuard Dashboard](assets/images/dashboard.png)
+
+---
+
+### 🔍 New Inspection
+
+Users can upload a product image, select its expected category, and start the AI inspection pipeline.
+
+![New Inspection](assets/images/new_inspection.png)
+
+---
+
+### 🎯 AI Defect Inspection Result
+
+After product validation, VisionGuard performs defect segmentation and displays the inspection result, affected area, severity, and final quality-control decision.
+
+![Defect Inspection Result](assets/images/defect_result.png)
+
+---
+
+### 🗂️ Inspection History
+
+Completed inspections are stored in the database and can be reviewed later through the Inspection History interface.
+
+![Inspection History](assets/images/inspection_history.png)
+
+---
+
+### 📑 Reports Center
+
+The Reports interface provides access to generated inspection reports and stored quality-control results.
+
+![VisionGuard Reports](assets/images/reports.png)
+
+---
+
+### 📄 Automated PDF Inspection Report
+
+VisionGuard can dynamically generate a PDF report for an individual inspection.
+
+The report is generated from the inspection data stored in the database and includes the relevant inspection information and AI results.
+
+![VisionGuard PDF Report](assets/images/pdf_report.png)
+
+---
+
+### 📧 Email Report Delivery
+
+Generated inspection reports can also be delivered by email directly from the VisionGuard backend.
+
+![VisionGuard Email Report](assets/images/email_report.png)
+
+---
+
+### ⚡ FastAPI / Swagger API
+
+The backend provides REST API endpoints for inspection, history, dashboard analytics, PDF generation, and email report delivery.
+
+![VisionGuard FastAPI](assets/images/api_swagger.png)
 
 ---
 
@@ -87,6 +165,8 @@ The segmentation model uses a single segmentation class:
 ```
 
 Product identity is handled independently by the product classification model.
+
+The use of instance segmentation allows separate defect regions to be represented independently by their masks.
 
 ---
 
@@ -142,6 +222,80 @@ The 5% value is a configurable project threshold and is not presented as a unive
 
 ---
 
+### 💾 Inspection Database
+
+Inspection results are stored using **SQLite**.
+
+Each saved inspection can contain information such as:
+
+```text
+Inspection ID
+Inspection Code
+Product Category
+AI Product Prediction
+Product Confidence
+Defect Detection Result
+Defect Region Count
+Affected Area
+Severity
+PASS / REJECT Decision
+Creation Time
+```
+
+The stored data powers the Inspection History, Dashboard, Reports, and reporting workflow.
+
+---
+
+### 📄 PDF Reporting
+
+VisionGuard generates inspection reports dynamically in the backend.
+
+The reporting workflow is:
+
+```text
+Inspection ID
+      ↓
+Retrieve Inspection from SQLite
+      ↓
+Generate PDF Report
+      ↓
+Return application/pdf
+      ↓
+Download Report
+```
+
+PDF reports are generated programmatically using Python and **ReportLab**.
+
+FastAPI returns the generated report using a streaming file response.
+
+---
+
+### 📧 Email Reporting
+
+VisionGuard can send an inspection report directly to a recipient email address.
+
+The workflow is:
+
+```text
+Recipient Email + Inspection ID
+              ↓
+            FastAPI
+              ↓
+ Retrieve Inspection from SQLite
+              ↓
+      Generate PDF Report
+              ↓
+       Attach PDF to Email
+              ↓
+          Gmail SMTP
+              ↓
+        Recipient Email
+```
+
+Email credentials are kept outside the source code using environment variables.
+
+---
+
 ## 🧠 AI Models
 
 ### 1. Product Classification Model
@@ -169,7 +323,7 @@ Held-out MVTec test results:
 ### 2. VisionGuard V4 Defect Segmentation
 
 **Architecture:** YOLOv8s-seg  
-**Task:** Pixel-level defect segmentation  
+**Task:** Instance-level pixel defect segmentation  
 **Classes:** 1 (`defect`)
 
 VisionGuard V4 was fine-tuned with additional lighting and image augmentation.
@@ -198,6 +352,72 @@ Segmentation validation metrics:
 | Recall | 0.711 | 0.717 |
 | mAP@50 | 0.765 | 0.788 |
 | mAP@50-95 | 0.488 | 0.436 |
+
+---
+
+## 🤖 Why YOLOv8-seg?
+
+VisionGuard requires more than a binary defect mask.
+
+For each detected defect, the system benefits from:
+
+```text
+Defect Instance
+      ↓
+Bounding Box
+      ↓
+Confidence Score
+      ↓
+Pixel-Level Mask
+      ↓
+Affected Area Calculation
+```
+
+YOLOv8-seg provides detection and instance segmentation in the same model.
+
+### Why not standard U-Net?
+
+A traditional U-Net performs semantic segmentation.
+
+It can classify pixels as:
+
+```text
+Background
+or
+Defect
+```
+
+If several disconnected defects exist, they may appear as separate regions in the semantic mask, but they are not represented directly as independent detected instances.
+
+Additional post-processing such as connected-component analysis or contour extraction would be required to explicitly separate and process each defect region.
+
+### Why not SAM?
+
+SAM is a powerful general-purpose and promptable segmentation model.
+
+However, it is not inherently a task-specific industrial defect detector.
+
+A SAM-based pipeline may require additional prompting, detection logic, or another model to identify which segmented regions should actually be considered defects.
+
+For VisionGuard, YOLOv8-seg provides a more direct automated workflow:
+
+```text
+Image
+  ↓
+Defect Detection
+  ↓
+Individual Defect Masks
+  ↓
+Confidence Scores
+  ↓
+ROI Analysis
+  ↓
+Affected Area
+  ↓
+QC Decision
+```
+
+The choice of YOLOv8-seg is therefore based on the requirements of this project rather than claiming that it is universally superior to U-Net or SAM.
 
 ---
 
@@ -337,7 +557,7 @@ defect
 
 ## 🖥️ Web Application
 
-VisionGuard includes a web-based inspection interface.
+VisionGuard includes a web-based industrial inspection interface.
 
 ### Frontend
 
@@ -363,6 +583,11 @@ The interface provides:
 - Affected area
 - Severity classification
 - Final PASS / REJECT decision
+- Inspection history
+- Dashboard statistics
+- Inspection reports
+- PDF download
+- Email report delivery
 
 ### Backend
 
@@ -373,6 +598,8 @@ Built with:
 - Ultralytics
 - OpenCV
 - NumPy
+- SQLite
+- ReportLab
 
 The backend performs:
 
@@ -394,7 +621,39 @@ Affected Area Calculation
 Severity Estimation
       ↓
 Quality Decision
+      ↓
+Database Storage
+      ↓
+Reporting
 ```
+
+---
+
+## ⚡ API Endpoints
+
+VisionGuard exposes REST API endpoints through FastAPI.
+
+```text
+POST /api/inspect
+     Run a new product inspection
+
+GET  /api/inspections
+     Retrieve saved inspection history
+
+GET  /api/inspections/{inspection_id}
+     Retrieve one inspection
+
+GET  /api/dashboard
+     Retrieve dashboard statistics
+
+GET  /api/inspections/{inspection_id}/report
+     Generate and download a PDF report
+
+POST /api/inspections/{inspection_id}/email
+     Generate and email an inspection report
+```
+
+Interactive API documentation is available through Swagger when the backend is running.
 
 ---
 
@@ -403,16 +662,32 @@ Quality Decision
 ```text
 VisionGuard/
 │
+├── assets/
+│   └── images/
+│       ├── api_swagger.png
+│       ├── dashboard.png
+│       ├── defect_result.png
+│       ├── email_report.png
+│       ├── inspection_history.png
+│       ├── new_inspection.png
+│       ├── pdf_report.png
+│       └── reports.png
+│
 ├── backend/
+│   │
+│   ├── data/
 │   │
 │   ├── model/
 │   │   ├── VisionGuard_V4_best.pt
 │   │   └── VisionGuard_ProductClassifier_best.pt
 │   │
+│   ├── database.py
 │   ├── detector.py
+│   ├── email_service.py
 │   ├── inspection_logic.py
 │   ├── main.py
 │   ├── product_classifier.py
+│   ├── report_generator.py
 │   └── requirements.txt
 │
 ├── frontend/
@@ -422,7 +697,6 @@ VisionGuard/
 │   ├── src/
 │   │   ├── assets/
 │   │   ├── pages/
-│   │   │   └── NewInspection.jsx
 │   │   ├── App.css
 │   │   ├── App.jsx
 │   │   ├── index.css
@@ -430,6 +704,10 @@ VisionGuard/
 │   │
 │   ├── package.json
 │   └── vite.config.js
+│
+├── notebooks/
+│   ├── VisionGuard segmentation / evaluation notebook
+│   └── VisionGuard product classification notebook
 │
 ├── .gitignore
 └── README.md
@@ -439,7 +717,7 @@ VisionGuard/
 
 ## ⚙️ Running VisionGuard Locally
 
-### 1. Clone the repository
+### 1. Clone the Repository
 
 ```bash
 git clone https://github.com/AhmedRahim01/VisionGuard-AI-Industrial-Defect-Inspection.git
@@ -531,14 +809,13 @@ Current limitations include:
 - Performance is primarily evaluated within the MVTec image domain.
 - Significant changes in camera position, lighting, background, or product appearance may cause domain shift.
 - ROI extraction quality varies between product categories.
-- The Transistor category currently requires further improvement in ROI extraction and segmentation behavior.
+- Some product categories may require further ROI and segmentation optimization.
 - The current 5% severity threshold is project-defined and would need to be calibrated to actual manufacturing requirements before production deployment.
+- The current system is intended as a research and graduation-project prototype rather than a certified industrial deployment.
 
 ---
 
 ## 🛣️ Development Roadmap
-
-Planned features include:
 
 - [x] Product classification
 - [x] Product-category verification
@@ -548,23 +825,45 @@ Planned features include:
 - [x] Severity estimation
 - [x] Automated PASS / REJECT decision
 - [x] Web inspection interface
-- [ ] Inspection database
-- [ ] Inspection history
-- [ ] Analytics dashboard
-- [ ] PDF inspection reports
-- [ ] Email report delivery
-- [ ] Production statistics and loss analysis
+- [x] SQLite inspection database
+- [x] Inspection history
+- [x] Analytics dashboard
+- [x] PDF inspection reports
+- [x] Email report delivery
+- [x] Production statistics
 - [ ] Additional model and ROI optimization
+- [ ] Real industrial-domain validation
+- [ ] Production deployment optimization
 
 ---
 
 ## 🎯 Project Objective
 
-VisionGuard demonstrates how multiple Computer Vision components can be combined into a complete industrial inspection workflow rather than using a single isolated model.
+VisionGuard demonstrates how multiple Computer Vision and Software Engineering components can be combined into a complete industrial inspection workflow rather than using a single isolated AI model.
 
 The project integrates:
 
-**Classification + Segmentation + Image Processing + ROI Analysis + Decision Logic + Web Application**
+```text
+Product Classification
+        +
+Instance Segmentation
+        +
+Image Processing
+        +
+ROI Analysis
+        +
+Decision Logic
+        +
+Database
+        +
+Backend API
+        +
+Web Application
+        +
+PDF Reporting
+        +
+Email Delivery
+```
 
 into one end-to-end quality inspection system.
 
@@ -585,12 +884,21 @@ The dataset is commonly distributed under **CC BY-NC-SA 4.0** terms. Users of th
 Current stage:
 
 ```text
-AI Pipeline       ✅
-Product Validation ✅
-Defect Segmentation ✅
-ROI Analysis       ✅
-Web Interface      ✅
-Inspection History 🚧
-Dashboard          🚧
-Reporting          🚧
+AI Pipeline          ✅
+Product Validation   ✅
+Defect Segmentation  ✅
+ROI Analysis          ✅
+Web Interface         ✅
+SQLite Database       ✅
+Inspection History    ✅
+Dashboard             ✅
+PDF Reporting         ✅
+Email Reporting       ✅
+API Documentation     ✅
 ```
+
+---
+
+### VisionGuard AI
+
+**Industrial AI Defect Inspection & Quality Control System**
